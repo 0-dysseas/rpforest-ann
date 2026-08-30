@@ -1,0 +1,17 @@
+# build artifacts
+/build/
+*.o
+*.out
+a.out
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# editor / OS
+.vscode/
+.vs/
+*.swp
+.DS_Store
+Thumbs.db
