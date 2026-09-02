@@ -1,7 +1,7 @@
 CC      ?= gcc
 CFLAGS  ?= -std=c11 -Wall -Wextra -Wpedantic -O2
 DBGFLAGS = -std=c11 -Wall -Wextra -Wpedantic -g -O0 -fsanitize=address,undefined
-LDFLAGS ?=
+LDFLAGS ?= -lm
 
 SRC_DIR   := src
 INC_DIR   := include

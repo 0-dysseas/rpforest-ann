@@ -18,6 +18,8 @@ Mechanism: draw a small number of shared Gaussian latent factors (via a Box-Mull
 
 Per-dimension variance decay (mimicking how real MFCC coefficient magnitude falls off with index) applied via a scaling factor decreasing with dimension index.
 
+Noise is non-isotropic: each output dimension gets its own variance from the decay schedule rather than one shared variance across all dimensions. The isotropic case (equal variance in every dimension) is the special condition under which this model's maximum-likelihood solution reduces to PCA, and using it would also conflict with the per-dimension variance decay already decided above.
+
 Exact factor count, weighting scheme, and decay schedule are implementation choices made while writing the generator.
 
 ## Phase 1: Implementation (Dataset struct)
@@ -29,6 +31,18 @@ Exact factor count, weighting scheme, and decay schedule are implementation choi
 `dataset_free` frees the buffer and zeroes the struct's fields, so a stale `Dataset` fails loudly (via `dataset_at`'s assert, or a safe no-op `free(NULL)`) rather than causing silent memory corruption.
 
 `dataset_at` returns a pointer to vector `i`'s data via `data + i * dim`, with an `assert(i < n)` bounds check. Asserts are compiled out if `NDEBUG` is defined. The project's Makefile does not define it in either build target, so the check stays active in both.
+
+## Phase 1: Implementation (random utilities)
+
+`include/random_utils.h` and `src/random_utils.c` provide `uniform_random` and `gaussian_random`, used by the generator for both the factor draws and the per-dimension noise.
+
+`gaussian_random` uses the Box-Muller transform: two independent uniform values in (0, 1) produce two independent standard normal values. Only one of the two is used per call, the second discarded. A known inefficiency, acceptable at this project's scale.
+
+Both functions return `double`, not `float`. The intermediate math (`log`, `sqrt`, `cos`) is more numerically stable in double precision. The generator casts down to `float` only when writing the final value into the `Dataset` buffer.
+
+`PI` is defined locally rather than using `M_PI`. `M_PI` is a POSIX/glibc extension, not part of ISO C, and is not guaranteed to be declared under the project's `-std=c11` strict mode.
+
+The Makefile's `LDFLAGS` now includes `-lm`, required to link `sqrt`, `log`, and `cos` from the math library.
 
 ## Sources consulted (Phase 1)
 
@@ -45,3 +59,6 @@ Exact factor count, weighting scheme, and decay schedule are implementation choi
 - Box Muller Transform, Algorithm Archive: https://www.algorithm-archive.org/contents/box_muller/box_muller.html
 - Cholesky decomposition intuition: https://alexander-pastukhov.github.io/notes-on-statistics/advanced-04-cholesky.html
 - The Math Behind the Curse of Dimensionality: https://towardsdatascience.com/the-math-behind-the-curse-of-dimensionality-cf8780307d74/
+- Factor analysis, Wikipedia: https://en.wikipedia.org/wiki/Factor_analysis
+- FactorAnalysis, scikit-learn documentation: https://scikit-learn.org/stable/modules/generated/sklearn.decomposition.FactorAnalysis.html
+- Random Projection, scikit-learn user guide: https://scikit-learn.org/stable/modules/random_projection.html
