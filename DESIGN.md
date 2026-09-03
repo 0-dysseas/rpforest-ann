@@ -58,6 +58,16 @@ The nested loops that build each vector run in O(n * dim * k) total: n vectors, 
 
 Neither this module nor random_utils calls `srand()`. Seeding is left to the caller (main, once wired up), since a library function reseeding on every call would be wrong, and calling it more than once per program run would defeat its purpose.
 
+## Phase 1: Empirical verification
+
+`tests/test_generator.c` checks the two structural properties the shared-latent-factor design claims to produce: decaying per-dimension variance and nonzero correlation between dimensions.
+
+Variance measured across a generated dataset (D = 20) fell from 3.455 at dimension 0 to 0.013 at dimension 19, a drop of about 270x. This matches the decay schedule's prediction: variance scales with the square of the per-dimension decay factor, and the ratio of the last decay factor to the first, squared, comes out close to the measured ratio. The trend is not strictly monotonic (dimension 2 measured higher than dimensions 0 and 1, for instance), which is expected: each dimension's row in the loading matrix L is an independent random draw, so the smooth decay envelope carries per-dimension noise on top of it.
+
+The correlation matrix over the first six dimensions showed a diagonal of exactly 1.000 (each dimension perfectly correlated with itself, confirming the correlation computation itself) and clearly nonzero off-diagonal entries in both directions, for example 0.632 between dimensions 0 and 3, and -0.605 between dimensions 1 and 2. Negative correlations are expected under this model: two dimensions sharing a latent factor with opposite-signed weights on it move in opposite directions, and L's entries are zero-centered, so this happens routinely. A few pairs (dimension 0 and 5, at 0.027) came out close to zero, also expected since not every dimension pair shares much factor weight by chance.
+
+Both properties together confirm the generator produces data with genuine low-dimensional structure to exploit, rather than uncorrelated high-dimensional noise. This is the premise the rest of the project, tree splits that find structure-aligned hyperplanes, depends on. Phase 1 is closed out on this basis.
+
 ## Sources consulted (Phase 1)
 
 - Erik Bernhardsson, "Nearest neighbor methods and vector models", part 1: https://erikbern.com/2015/09/24/nearest-neighbor-methods-vector-models-part-1.html
