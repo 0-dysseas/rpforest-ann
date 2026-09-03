@@ -11,7 +11,12 @@ BIN       := $(BUILD_DIR)/rpforest-ann
 SRCS := $(wildcard $(SRC_DIR)/*.c)
 OBJS := $(SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
-.PHONY: all debug clean run
+LIB_OBJS := $(filter-out $(BUILD_DIR)/main.o, $(OBJS))
+
+TEST_SRC := tests/test_generator.c
+TEST_BIN := $(BUILD_DIR)/test_generator
+
+.PHONY: all debug clean run test
 
 all: $(BIN)
 
@@ -32,3 +37,9 @@ run: all
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+test: $(TEST_BIN)
+	./$(TEST_BIN)
+
+$(TEST_BIN): $(TEST_SRC) $(LIB_OBJS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -I$(INC_DIR) $(TEST_SRC) $(LIB_OBJS) -o $@ $(LDFLAGS)
