@@ -44,6 +44,20 @@ Both functions return `double`, not `float`. The intermediate math (`log`, `sqrt
 
 The Makefile's `LDFLAGS` now includes `-lm`, required to link `sqrt`, `log`, and `cos` from the math library.
 
+## Phase 1: Implementation (Generator)
+
+`include/generator.h` and `src/generator.c` provide `generate_dataset(n, dim, k)`, implementing the shared-latent-factor model above.
+
+The loading matrix L (dim by k) is stored the same way the Dataset itself is: one flat `malloc`'d block of `dim * k` doubles, indexed by hand as `loadings[j * k + f]`, rather than an array of pointers. Same reasoning as the Dataset struct: one allocation, contiguous, no pointer chasing.
+
+L and the per-dimension decay schedule are computed once, before any vector is generated, and shared by all n vectors. For each vector: a fresh k-length factor draw, a matrix-vector product against L giving the raw dim-length signal, fresh independent noise added to it, and the sum scaled by the decay schedule.
+
+The decay multiplication is a single trick doing two jobs at once. Rather than tracking a separate noise-variance schedule in addition to the magnitude-decay schedule, the same per-dimension decay factor is applied at the end, to the signal and the noise together. Because both are scaled by the same shrinking factor for a given dimension, the noise ends up smaller in exactly the dimensions where the signal is smaller, which is the non-isotropic property decided above, without a second array to maintain. This final multiplication is an addition on top of the textbook factor analysis equation X = LF + ε, not part of the original model.
+
+The nested loops that build each vector run in O(n * dim * k) total: n vectors, each needing dim output values, each of which requires summing k terms. This is the minimum work the computation can take, not an accidental complexity blowup; producing n * dim numbers that each require a k-term sum cannot be done in less than n * dim * k operations.
+
+Neither this module nor random_utils calls `srand()`. Seeding is left to the caller (main, once wired up), since a library function reseeding on every call would be wrong, and calling it more than once per program run would defeat its purpose.
+
 ## Sources consulted (Phase 1)
 
 - Erik Bernhardsson, "Nearest neighbor methods and vector models", part 1: https://erikbern.com/2015/09/24/nearest-neighbor-methods-vector-models-part-1.html
