@@ -53,6 +53,5 @@ Dataset generate_dataset(size_t n, size_t dim, size_t k) {
     free(loadings);
     free(decay);
     free(factors);
-    dataset_free(&ds);
     return ds;    
 }
