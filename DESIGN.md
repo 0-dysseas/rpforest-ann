@@ -86,3 +86,21 @@ Both properties together confirm the generator produces data with genuine low-di
 - Factor analysis, Wikipedia: https://en.wikipedia.org/wiki/Factor_analysis
 - FactorAnalysis, scikit-learn documentation: https://scikit-learn.org/stable/modules/generated/sklearn.decomposition.FactorAnalysis.html
 - Random Projection, scikit-learn user guide: https://scikit-learn.org/stable/modules/random_projection.html
+
+## Phase 2: Node representation
+
+A random projection tree node is one of two kinds: an internal node, which only decides which of two children a point belongs to, and a leaf, which holds the actual points that landed in that region. `RPNode` represents both with a single struct and an `is_leaf` tag rather than two separate struct types (one for internal nodes, one for leaves) behind a discriminated pointer or a union. All fields for both cases exist on every node, wasting some memory (a leaf carries unused `normal`/`threshold`/`left`/`right` fields, an internal node carries unused `indices`/`count`), which a union would avoid. That waste is accepted for now: compact, cache-aware node layout is its own later phase (roadmap item 7), and doing it now would mean optimizing a data structure whose access patterns have not been measured yet.
+
+## Phase 2: Implementation (RPNode struct)
+
+`is_leaf` is a plain `int`, not `bool` from `<stdbool.h>`. Neither `Dataset`, `random_utils`, nor `generator` use `<stdbool.h>` anywhere in the project so far, so `int` keeps the new struct consistent with the rest of the codebase's existing style rather than introducing a second convention for the same 0/1 flag.
+
+`RPNode`'s internal-node fields are `float *normal` and `float threshold` (the hyperplane's coefficients, derived from two random pivot points, see the split-rule algebra worked out in chat) plus `struct RPNode *left` and `struct RPNode *right`. Its leaf fields are `size_t *indices` and `size_t count`.
+
+The struct is declared as `typedef struct RPNode { ... } RPNode;`, naming the struct twice: `RPNode` immediately after `struct` is the struct tag, `RPNode` after the closing brace is the typedef alias. The tag is required here specifically because the struct is self-referential (`left` and `right` are pointers to the same struct type), and inside the struct body the typedef name does not exist yet, only the tag does. This is the standard C idiom for any self-referential struct (tree nodes, linked list nodes).
+
+## Phase 2: Implementation (RPTree struct)
+
+The recursive build (not yet written) partitions one flat array of point indices in place: the root call gets the full array, and each split hands its two children pointers into two contiguous sub-ranges of that same array, not separately allocated copies. A leaf's `indices` pointer is therefore frequently not the address `malloc` originally returned, it can be offset into the middle of that block. Freeing such a pointer directly is undefined behavior.
+
+`RPTree` exists to make this safe: it wraps the tree's `root` together with the single flat `indices` array the whole tree is built from, and owns that array exclusively. The array is allocated once, when the tree is built, and freed exactly once, when the tree is freed. Individual `RPNode` leaves never own or free their `indices` pointer, they only reference into the array `RPTree` owns.
