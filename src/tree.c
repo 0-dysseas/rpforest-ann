@@ -28,3 +28,26 @@ static void choose_split(const Dataset *ds, const size_t *indices, size_t count,
 
 }
 
+static size_t partition_indices(const Dataset *ds, size_t *indices, size_t count, const float *normal, float threshold) {
+    size_t left = 0;
+    size_t right = count;
+
+    while (left < right) {
+        const float *vec = dataset_at(ds, indices[left]);
+        float dot = 0.0f;
+        for (size_t d = 0; d < ds->dim; d++) {
+            dot += vec[d] * normal[d];
+        }
+
+        if (dot < threshold) {
+            left++;
+        } else {
+            right--;
+            size_t tmp = indices[left];
+            indices[left] = indices[right];
+            indices[right] = tmp;
+        }
+    }
+
+    return left;
+}
