@@ -51,3 +51,41 @@ static size_t partition_indices(const Dataset *ds, size_t *indices, size_t count
 
     return left;
 }
+
+static RPNode *build_recursive(const Dataset *ds, size_t *indices, size_t count, size_t depth, size_t max_leaf_size, size_t max_depth) {
+    RPNode *node = malloc(sizeof(RPNode));
+    if (node == NULL) {
+        return NULL;
+    }
+
+    if (count <= max_leaf_size || depth >= max_depth) {
+        node->is_leaf = 1;
+        node->indices = indices;
+        node->count = count;
+        node->normal = NULL;
+        node->left = NULL;
+        node->right = NULL;
+        return node;
+    }
+
+    float *normal = malloc(ds->dim * sizeof(float));
+    if (normal  == NULL) {
+        free(node);
+        return NULL;
+    }
+
+    float threshold;
+    choose_split(ds, indices, count, normal, &threshold);
+    size_t split = partition_indices(ds, indices, count, normal, threshold);
+
+    node->is_leaf = 0;
+    node->normal = normal;
+    node->threshold = threshold;
+    node->indices = NULL;
+    node->count = 0;
+    node->left = build_recursive(ds, indices, split, depth + 1, max_leaf_size, max_depth);
+    node->right = build_recursive(ds, indices + split, count - split, depth + 1, max_leaf_size, max_depth);
+
+    return node;
+}
+
