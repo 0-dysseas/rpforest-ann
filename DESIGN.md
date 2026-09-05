@@ -104,3 +104,25 @@ The struct is declared as `typedef struct RPNode { ... } RPNode;`, naming the st
 The recursive build (not yet written) partitions one flat array of point indices in place: the root call gets the full array, and each split hands its two children pointers into two contiguous sub-ranges of that same array, not separately allocated copies. A leaf's `indices` pointer is therefore frequently not the address `malloc` originally returned, it can be offset into the middle of that block. Freeing such a pointer directly is undefined behavior.
 
 `RPTree` exists to make this safe: it wraps the tree's `root` together with the single flat `indices` array the whole tree is built from, and owns that array exclusively. The array is allocated once, when the tree is built, and freed exactly once, when the tree is freed. Individual `RPNode` leaves never own or free their `indices` pointer, they only reference into the array `RPTree` owns.
+
+## Phase 2: Implementation (split rule and recursive build)
+
+`choose_split` implements the derived split rule directly: two distinct random positions are drawn from the current index range via `uniform_random`, the vectors at those positions become pivots A and B, and `normal = B - A`, `threshold = (‖B‖² - ‖A‖²) / 2` are computed component by component, matching `x·n < t` from the algebra worked out for "closer to A than to B". The squared-length accumulations are done in `double` even though vectors are stored as `float`, only cast back to `float` for the final threshold, avoiding precision loss when summing many small floats across `dim` dimensions (same reasoning as the generator's use of `double` intermediates).
+
+`partition_indices` rearranges `indices[0..count)` in place using a single two-pointer pass (the same technique as the partition step in quicksort): a point already on its correct side advances a `left` pointer, otherwise it is swapped toward the end of the range and a `right` pointer shrinks. Every point is visited exactly once, no second array is allocated.
+
+`build_recursive` checks the two stopping conditions (`count <= max_leaf_size` or `depth >= max_depth`) before doing any split work, allocates a leaf directly if either holds, and otherwise computes the split, partitions, and recurses on the two resulting contiguous sub-ranges of the same shared indices array (`indices` and `indices + split`), consistent with the `RPTree` ownership design documented above. No special case was added for a split that fails to separate the group at all (`split == 0` or `split == count`, the degenerate case discussed for duplicate-heavy data): the recursion simply continues, depth increases, and `max_depth` is the backstop that eventually forces a leaf.
+
+`rptree_build` is the public entry point: allocates the single flat `indices` array (one slot per point, initialized to `0..n-1`), then calls `build_recursive` on the whole array at depth 0. `rptree_free` is its inverse, recursively freeing each internal node's `normal` array and every node struct, then freeing the shared `indices` array exactly once at the end, never per leaf.
+
+## Phase 2: Empirical verification (tree build)
+
+`tests/test_tree.c` builds a tree over the same shared-latent-factor dataset used in Phase 1's verification (n = 2000, dim = 20, k = 4, seed 42), with `max_leaf_size = 20` and `max_depth = 20`, and checks two invariants a correct build must satisfy plus one structural report.
+
+Partition correctness: every one of the 2000 points appeared in exactly one leaf (0 missing, 0 duplicated across leaves), confirming `partition_indices` and the recursive split neither lose nor double count points while rearranging the shared indices array in place.
+
+Split self-consistency: re-deriving, independently for each of the 2000 points, which leaf the tree's own stored `normal`/`threshold` values say it belongs in (descending from the root by `dot(point, normal) < threshold` at each internal node) landed on the same leaf `build_recursive` actually placed it in, for all 2000 points, 0 mismatches. This is the same decision rule Phase 3's search will walk, so it also confirms the mechanism search will depend on is internally consistent.
+
+Structurally, the tree built 168 leaves, sizes ranging from 1 to 20 (the `max_leaf_size` cap), averaging 11.9, and reached a maximum depth of 13 against a cap of 20, well short of the degenerate case discussed for duplicate-heavy data. This is consistent with Phase 1's empirical finding that the dataset carries genuine low-dimensional structure (nonzero cross-dimension correlation): the random hyperplanes found real separations in most splits rather than repeatedly failing to divide the data.
+
+Both checks and the debug build (`-fsanitize=address,undefined`) running clean on `test_tree` together close out Phase 2's build correctness: the tree partitions every point exactly once, its own split rule is self-consistent, and its manual memory management (the `RPTree`-owned indices array, per-node `normal` allocations) has no detected leaks, invalid frees, or undefined behavior.
