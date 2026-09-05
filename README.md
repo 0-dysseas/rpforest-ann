@@ -4,7 +4,9 @@ Random Projection Forest for Approximate Nearest Neighbor (ANN) search, implemen
 
 ## Status
 
-Phsae 1 complete: vector/dataset representation and synthetic dataset generation, verified through tests. Phase 2 (random projection tree) in progress. See commit history and [DESIGN.md](DESIGN.md) for details.
+Phsae 1 complete: vector/dataset representation and synthetic dataset generation, verified through tests.
+Phase 2 complete: random projection tree, hyperplane splits, recursive build and leaf buckets. 
+Phase 3 (search on one tree) in progress. See commit history and [DESIGN.md](DESIGN.md) for details.
 
 ## Motivation
 
@@ -31,9 +33,15 @@ Each generatedd vector starts from a small number of shared random values, calle
 
 The dimensions also do not all carry the same amount of signal: later dimensions are given smaller variance, following the way real MFCC coefficients shrink in magnitude further down the coefficient index.
 
-### Random projection tree and forest
+### Random projection tree
 
-TBD, filled in once Phase 2 and Phase 3 are implemented.
+Each tree recursively partitions the dataset with random hyperplane splits on the equidistant of two randomly chosen points of each internal node's set. Every point goes to the closest pivot, distributing the points of the dataset in two spaces accordingly. This reduces algebraically to a single dot product and threshold comparison per point, the same approach used by Annoy. Recursion stops either once a node's point count drops to a fixed leaf sixe or a maximum depth is reached.
+
+Verified against two properties, partition correctness (every point ends up in exactly one leaf) and split self-consistency (independently re-applying the tree's own split rule from the root agrees with were each point was actually placed).
+
+### Random projection forest
+
+TBD...
 
 ## Benchmarks
 
