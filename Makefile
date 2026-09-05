@@ -13,8 +13,11 @@ OBJS := $(SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
 LIB_OBJS := $(filter-out $(BUILD_DIR)/main.o, $(OBJS))
 
-TEST_SRC := tests/test_generator.c
-TEST_BIN := $(BUILD_DIR)/test_generator
+TEST_GENERATOR_SRC := tests/test_generator.c
+TEST_GENERATOR_BIN := $(BUILD_DIR)/test_generator
+
+TEST_TREE_SRC := tests/test_tree.c
+TEST_TREE_BIN := $(BUILD_DIR)/test_tree
 
 .PHONY: all debug clean run test
 
@@ -38,8 +41,12 @@ run: all
 clean:
 	rm -rf $(BUILD_DIR)
 
-test: $(TEST_BIN)
-	./$(TEST_BIN)
+test: $(TEST_GENERATOR_BIN) $(TEST_TREE_BIN)
+	./$(TEST_GENERATOR_BIN)
+	./$(TEST_TREE_BIN)
 
-$(TEST_BIN): $(TEST_SRC) $(LIB_OBJS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -I$(INC_DIR) $(TEST_SRC) $(LIB_OBJS) -o $@ $(LDFLAGS)
+$(TEST_GENERATOR_BIN): $(TEST_GENERATOR_SRC) $(LIB_OBJS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -I$(INC_DIR) $(TEST_GENERATOR_SRC) $(LIB_OBJS) -o $@ $(LDFLAGS)
+
+$(TEST_TREE_BIN): $(TEST_TREE_SRC) $(LIB_OBJS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -I$(INC_DIR) $(TEST_TREE_SRC) $(LIB_OBJS) -o $@ $(LDFLAGS)

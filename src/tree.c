@@ -89,3 +89,37 @@ static RPNode *build_recursive(const Dataset *ds, size_t *indices, size_t count,
     return node;
 }
 
+RPTree rptree_build(const Dataset *ds, size_t max_leaf_size, size_t max_depth) {
+    RPTree tree;
+    tree.indices = malloc(ds->n * sizeof(size_t));
+    if (tree.indices == NULL) {
+        tree.root = NULL;
+        return tree;
+    }
+
+    for (size_t i = 0; i < ds->n; i++) {
+        tree.indices[i] = i;
+    }
+
+    tree.root = build_recursive(ds, tree.indices, ds->n, 0, max_leaf_size, max_depth);
+    return tree;
+}
+
+static void free_node(RPNode *node) {
+    if (node == NULL) {
+        return;
+    }
+    if (!node->is_leaf) {
+        free(node->normal);
+        free_node(node->left);
+        free_node(node->right);
+    }
+    free(node);
+}
+
+void rptree_free(RPTree *tree) {
+    free_node(tree->root);
+    free(tree->indices);
+    tree->root = NULL;
+    tree->indices = NULL;
+}
