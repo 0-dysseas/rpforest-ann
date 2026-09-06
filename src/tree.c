@@ -132,3 +132,96 @@ void rptree_free(RPTree *tree) {
     tree->indices = NULL;
 }
 
+static float squared_distance(const Dataset *ds, const float *query, size_t idx) {
+    const float *point = dataset_at(ds, idx);
+    float sum = 0.0f;
+    for (size_t d = 0; d < ds->dim; d++) {
+        float diff = query[d] - point[d];
+        sum += diff * diff;
+    }
+    return sum;
+}
+
+typedef struct {
+    size_t index;
+    float distance;
+} Candidate;
+
+static int compare_candidates(const void *a, const void *b) {
+    float da = ((const Candidate *)a)->distance;
+    float db = ((const Candidate *)b)->distance;
+    if (da < db) return -1;
+    if (da > db) return 1;
+    return 0;
+}
+
+static size_t *collect_candidates(const RPTree *tree, const Dataset *ds, const float *query, size_t search_budget, size_t *out_count) {
+    *out_count = 0;
+
+    if (tree->root == NULL) {
+        return NULL;
+    }
+
+    size_t capacity = (search_budget > 0) ? search_budget : 1;
+    size_t *candidates = malloc(capacity * sizeof(size_t));
+    if (candidates == NULL) {
+        return NULL;
+    }
+
+    PQueue pq = pqueue_create(8);
+    if (pq.entries == NULL) {
+        return NULL;
+    }
+
+    RPNode *node = tree->root;
+    float priority = FLT_MAX;
+    size_t count = 0;
+
+    for (;;) {
+        while (!node->is_leaf) {
+            float dot = dot_product(query, node->normal, ds->dim);
+            float margin = dot - node->threshold;
+            float abs_margin = fabsf(margin);
+            if (abs_margin < priority) {
+                priority = abs_margin;
+            }
+
+            RPNode *near = (margin < 0.0f) ? node->left : node->right;
+            RPNode *far = (margin < 0.0f) ? node->right : node->left;
+
+            if (!pqueue_push(&pq, far, priority)) {
+                pqueue_free(&pq);
+                free(candidates);
+                return NULL;
+            }
+            node = near;
+        }
+
+        if (count + node->count > capacity) {
+            size_t new_capacity = capacity * 2;
+            while (new_capacity < count + node->count) {
+                new_capacity *= 2;
+            }
+            size_t *grown = realloc(candidates, new_capacity * sizeof(size_t));
+            if (grown == NULL) {
+                pqueue_free(&pq);
+                free(candidates);
+                return NULL;
+            }
+            candidates = grown;
+            capacity = new_capacity;
+        }
+        for (size_t i = 0; i < node->count; i++) {
+            candidates[count++] = node->indices[i];
+        }
+
+        if (count >= search_budget || pqueue_is_empty(&pq)) {
+            break;
+        }
+        pqueue_pop(&pq, &node, &priority);
+    }
+
+    pqueue_free(&pq);
+    *out_count = count;
+    return candidates;
+}
