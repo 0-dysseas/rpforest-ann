@@ -1,7 +1,18 @@
 #include "tree.h"
 #include "random_utils.h"
+#include "pqueue.h"
+#include <math.h>
+#include <float.h>
 #include <assert.h>
 #include <stdlib.h>
+
+static float dot_product(const float *vec, const float *normal, size_t dim) {
+    float dot = 0.0f;
+    for (size_t d = 0; d < dim; d++) {
+        dot += vec[d] * normal[d];
+    }
+    return dot;
+}
 
 // Threshold = 1/2 * (||B||^2 - ||A||^2)
 static void choose_split(const Dataset *ds, const size_t *indices, size_t count, float *normal, float *threshold) {
@@ -34,10 +45,7 @@ static size_t partition_indices(const Dataset *ds, size_t *indices, size_t count
 
     while (left < right) {
         const float *vec = dataset_at(ds, indices[left]);
-        float dot = 0.0f;
-        for (size_t d = 0; d < ds->dim; d++) {
-            dot += vec[d] * normal[d];
-        }
+        float dot = dot_product(vec, normal, ds->dim);
 
         if (dot < threshold) {
             left++;
@@ -123,3 +131,4 @@ void rptree_free(RPTree *tree) {
     tree->root = NULL;
     tree->indices = NULL;
 }
+

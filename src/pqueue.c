@@ -73,8 +73,8 @@ int pqueue_push(PQueue *pq, RPNode *node, float priority) {
 
     pq->entries[pq->size].node = node;
     pq->entries[pq->size].priority = priority;
-    sift_up(pq, pq->size);
     pq->size++;
+    sift_up(pq, pq->size - 1);
     return 1;
 }
 
