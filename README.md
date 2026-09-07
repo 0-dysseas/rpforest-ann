@@ -7,7 +7,7 @@ Random Projection Forest for Approximate Nearest Neighbor (ANN) search, implemen
 Phsae 1 complete: vector/dataset representation and synthetic dataset generation, verified through tests.
 Phase 2 complete: random projection tree, hyperplane splits, recursive build and leaf buckets. 
 Phase 3 complete: margin-based priority-queue search over a single tree.
-Phase 4 () in progress. See commit history and [DESIGN.md](DESIGN.md) for details.
+Phase 4 (Forest of trees + priority-queue multi-tree search) in progress. See commit history and [DESIGN.md](DESIGN.md) for details.
 
 ## Motivation
 
