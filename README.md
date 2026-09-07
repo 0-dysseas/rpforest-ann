@@ -6,7 +6,8 @@ Random Projection Forest for Approximate Nearest Neighbor (ANN) search, implemen
 
 Phsae 1 complete: vector/dataset representation and synthetic dataset generation, verified through tests.
 Phase 2 complete: random projection tree, hyperplane splits, recursive build and leaf buckets. 
-Phase 3 (search on one tree) in progress. See commit history and [DESIGN.md](DESIGN.md) for details.
+Phase 3 complete: margin-based priority-queue search over a single tree.
+Phase 4 () in progress. See commit history and [DESIGN.md](DESIGN.md) for details.
 
 ## Motivation
 
@@ -38,6 +39,16 @@ The dimensions also do not all carry the same amount of signal: later dimensions
 Each tree recursively partitions the dataset with random hyperplane splits on the equidistant of two randomly chosen points of each internal node's set. Every point goes to the closest pivot, distributing the points of the dataset in two spaces accordingly. This reduces algebraically to a single dot product and threshold comparison per point, the same approach used by Annoy. Recursion stops either once a node's point count drops to a fixed leaf sixe or a maximum depth is reached.
 
 Verified against two properties, partition correctness (every point ends up in exactly one leaf) and split self-consistency (independently re-applying the tree's own split rule from the root agrees with were each point was actually placed).
+
+### Search on single tree
+
+A query descends one tree using dot product and threshold tests from the tree's creation, always continuing into the side the query falls on. Whenever a split is passed, instead of dicarding the non-taken side, it is pushed onto a priority queue with a priority equal to the smallest _margin_ (distance from split's threshold) seen anywhere along the path so far.
+- A large margin means the decision was confident, so that untaken side stays low priority.
+- A small margin means the decision was close and worth revisiting later.
+
+The descend continues from the best entry left in the queue once a leaf is reached, collecting candidate points from every leaf visited, until either: a set _search budget_ of candidates has been collected or the queue runs out. Every collected candidate is scored by its actual distance to the query and the closest k are returned.
+
+Verified with three checks: querying with a point already in the dataset always returns that same point as its own nearest neighbor at distance 0, returned results come back sorted by distance, and, over 50 fresh query points compared against an exact brute-force search, the tree matched about 61% of the true nearest 5 neighbors with a search budget covering 10% of the dataset. A single tree finding a majority but not all of the true neighbors at that budget is expected, this is exactly what combining multiple trees is meant to improve on.
 
 ### Random projection forest
 
