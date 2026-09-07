@@ -170,6 +170,7 @@ static size_t *collect_candidates(const RPTree *tree, const Dataset *ds, const f
 
     PQueue pq = pqueue_create(8);
     if (pq.entries == NULL) {
+        free(candidates);
         return NULL;
     }
 
@@ -224,4 +225,55 @@ static size_t *collect_candidates(const RPTree *tree, const Dataset *ds, const f
     pqueue_free(&pq);
     *out_count = count;
     return candidates;
+}
+
+RPSearchResult rptree_search(const RPTree *tree, const Dataset *ds, const float *query, size_t k, size_t search_budget) {
+    RPSearchResult failure = {NULL, NULL, 0};
+
+    size_t candidate_count = 0;
+    size_t *candidates = collect_candidates(tree, ds, query, search_budget, &candidate_count);
+    if (candidates == NULL) {
+        return failure;
+    }
+
+    Candidate *scored = malloc(candidate_count * sizeof(Candidate));
+    if (scored == NULL) {
+        free(candidates);
+        return failure;
+    }
+    for (size_t i = 0; i < candidate_count; i++) {
+        scored[i].index = candidates[i];
+        scored[i].distance = squared_distance(ds, query, candidates[i]);
+    }
+    free(candidates);
+
+    qsort(scored, candidate_count, sizeof(Candidate), compare_candidates);
+
+    size_t result_count = (k < candidate_count) ? k : candidate_count;
+
+    RPSearchResult result;
+    result.indices = malloc(result_count * sizeof(size_t));
+    result.distances = malloc(result_count * sizeof(float));
+    if (result.indices == NULL || result.distances == NULL) {
+        free(result.indices);
+        free(result.distances);
+        free(scored);
+        return failure;
+    }
+    for (size_t i = 0; i < result_count; i++) {
+        result.indices[i] = scored[i].index;
+        result.distances[i] = scored[i].distance;
+    }
+    result.count = result_count;
+
+    free(scored);
+    return result;
+}
+
+void rptree_search_free(RPSearchResult *result) {
+    free(result->indices);
+    free(result->distances);
+    result->indices = NULL;
+    result->distances = NULL;
+    result->count = 0;    
 }

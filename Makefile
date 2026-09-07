@@ -19,6 +19,9 @@ TEST_GENERATOR_BIN := $(BUILD_DIR)/test_generator
 TEST_TREE_SRC := tests/test_tree.c
 TEST_TREE_BIN := $(BUILD_DIR)/test_tree
 
+TEST_SEARCH_SRC := tests/test_search.c
+TEST_SEARCH_BIN := $(BUILD_DIR)/test_search
+
 .PHONY: all debug clean run test
 
 all: $(BIN)
@@ -41,12 +44,16 @@ run: all
 clean:
 	rm -rf $(BUILD_DIR)
 
-test: $(TEST_GENERATOR_BIN) $(TEST_TREE_BIN)
+test: $(TEST_GENERATOR_BIN) $(TEST_TREE_BIN) $(TEST_SEARCH_BIN)
 	./$(TEST_GENERATOR_BIN)
 	./$(TEST_TREE_BIN)
+	./$(TEST_SEARCH_BIN)
 
 $(TEST_GENERATOR_BIN): $(TEST_GENERATOR_SRC) $(LIB_OBJS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -I$(INC_DIR) $(TEST_GENERATOR_SRC) $(LIB_OBJS) -o $@ $(LDFLAGS)
 
 $(TEST_TREE_BIN): $(TEST_TREE_SRC) $(LIB_OBJS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -I$(INC_DIR) $(TEST_TREE_SRC) $(LIB_OBJS) -o $@ $(LDFLAGS)
+
+$(TEST_SEARCH_BIN): $(TEST_SEARCH_SRC) $(LIB_OBJS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -I$(INC_DIR) $(TEST_SEARCH_SRC) $(LIB_OBJS) -o $@ $(LDFLAGS)
