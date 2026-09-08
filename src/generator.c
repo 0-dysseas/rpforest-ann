@@ -7,7 +7,7 @@
 // see formula A(t)=A_0*exp(-1/τ)
 #define DECAY_TAU_DIVISOR 3.0
 
-Dataset generate_dataset(size_t n, size_t dim, size_t k) {
+Dataset generate_dataset(size_t n, size_t dim, size_t k, uint64_t initstate, uint64_t initseq) {
     Dataset ds = dataset_create(n, dim);
     if (ds.data == NULL) {
         return ds;
@@ -27,16 +27,19 @@ Dataset generate_dataset(size_t n, size_t dim, size_t k) {
         return ds;
     }
 
+    Pcg32State rng;
+    pcg32_seed(&rng, initstate, initseq);
+
     for (size_t j = 0; j < dim; j++) {
         for (size_t f = 0; f < k; f++) {
-            loadings[j * k + f] = gaussian_random();
+            loadings[j * k + f] = gaussian_random(&rng);
         }
         decay[j] = exp(-(double)j / ((double)dim / DECAY_TAU_DIVISOR));
     }
 
     for (size_t i = 0; i < n; i ++) {
         for (size_t f = 0; f < k; f++) {
-            factors[f] = gaussian_random();
+            factors[f] = gaussian_random(&rng);
         }
     
         float *vec = dataset_at(&ds, i);
@@ -45,7 +48,7 @@ Dataset generate_dataset(size_t n, size_t dim, size_t k) {
             for (size_t f = 0; f < k; f++) {
                 signal += loadings[j * k + f] * factors[f];
             }
-            double noise = gaussian_random();
+            double noise = gaussian_random(&rng);
             vec[j] = (float)(decay[j] * (signal + noise));
         }
     }
