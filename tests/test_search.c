@@ -54,21 +54,19 @@ static int contains(const size_t *arr, size_t count, size_t value) {
 }
 
 int main(void) {
-    srand(42);
-
     size_t n = 2000;
     size_t dim = 20;
     size_t factors = 4;
     size_t max_leaf_size = 20;
     size_t max_depth = 20;
 
-    Dataset ds = generate_dataset(n, dim, factors);
+    Dataset ds = generate_dataset(n, dim, factors, 42, 1);
     if (ds.data == NULL) {
         fprintf(stderr, "generate_dataset failed\n");
         return 1;
     }
 
-    RPTree tree = rptree_build(&ds, max_leaf_size, max_depth);
+    RPTree tree = rptree_build(&ds, max_leaf_size, max_depth, 42, 2);
     if (tree.root == NULL) {
         fprintf(stderr, "rptree_build failed\n");
         dataset_free(&ds);
@@ -115,7 +113,7 @@ int main(void) {
     size_t k = 5;
     size_t search_budget = 200;
 
-    Dataset queries = generate_dataset(num_queries, dim, factors);
+    Dataset queries = generate_dataset(num_queries, dim, factors, 42, 3);
     if (queries.data == NULL) {
         fprintf(stderr, "generate_dataset (queries) failed\n");
         rptree_free(&tree);

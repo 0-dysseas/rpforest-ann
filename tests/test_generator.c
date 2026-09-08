@@ -38,13 +38,11 @@ static double dimension_correlation(const Dataset *ds, size_t j1, double mean1,
 }
 
 int main(void) {
-    srand(42);
-
     size_t n = 2000;
     size_t dim = 20;
     size_t k = 4;
 
-    Dataset ds = generate_dataset(n, dim, k);
+    Dataset ds = generate_dataset(n, dim, k, 42, 1);
     if (ds.data == NULL) {
         fprintf(stderr, "generate_dataset failed\n");
         return 1;

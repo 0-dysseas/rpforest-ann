@@ -64,21 +64,19 @@ static int leaf_contains(const RPNode *leaf, size_t target) {
 }
 
 int main(void) {
-    srand(42);
-
     size_t n = 2000;
     size_t dim = 20;
     size_t k = 4;
     size_t max_leaf_size = 20;
     size_t max_depth = 20;
 
-    Dataset ds = generate_dataset(n, dim, k);
+    Dataset ds = generate_dataset(n, dim, k, 42, 1);
     if (ds.data == NULL) {
         fprintf(stderr, "generate_dataset failed\n");
         return 1;
     }
 
-    RPTree tree = rptree_build(&ds, max_leaf_size, max_depth);
+    RPTree tree = rptree_build(&ds, max_leaf_size, max_depth, 42, 2);
     if (tree.root == NULL) {
         fprintf(stderr, "rptree_build failed\n");
         dataset_free(&ds);
