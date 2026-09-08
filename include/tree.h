@@ -2,6 +2,7 @@
 #define TREE_H
 
 #include "dataset.h"
+#include <stdint.h>
 
 typedef struct RPNode {
     int is_leaf;
@@ -28,7 +29,7 @@ typedef struct {
     size_t count;
 } RPSearchResult;
 
-RPTree rptree_build(const Dataset *ds, size_t max_leaf_size, size_t max_depth);
+RPTree rptree_build(const Dataset *ds, size_t max_leaf_size, size_t max_depth, uint64_t initstate, uint64_t initseq);
 
 RPSearchResult rptree_search(const RPTree *tree, const Dataset *ds, const float *query, size_t k, size_t search_budget);
 

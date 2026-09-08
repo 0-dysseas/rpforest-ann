@@ -15,13 +15,13 @@ static float dot_product(const float *vec, const float *normal, size_t dim) {
 }
 
 // Threshold = 1/2 * (||B||^2 - ||A||^2)
-static void choose_split(const Dataset *ds, const size_t *indices, size_t count, float *normal, float *threshold) {
+static void choose_split(const Dataset *ds, const size_t *indices, size_t count, float *normal, float *threshold, Pcg32State *rng) {
     assert(count >= 2);
 
-    size_t pa = (size_t)(uniform_random() * count);
-    size_t pb = (size_t)(uniform_random() * count);
+    size_t pa = (size_t)(uniform_random(rng) * count);
+    size_t pb = (size_t)(uniform_random(rng) * count);
     while ( pb == pa) {
-        pb = (size_t)(uniform_random() * count);
+        pb = (size_t)(uniform_random(rng) * count);
     }
 
     const float *a = dataset_at(ds, indices[pa]);
@@ -60,7 +60,7 @@ static size_t partition_indices(const Dataset *ds, size_t *indices, size_t count
     return left;
 }
 
-static RPNode *build_recursive(const Dataset *ds, size_t *indices, size_t count, size_t depth, size_t max_leaf_size, size_t max_depth) {
+static RPNode *build_recursive(const Dataset *ds, size_t *indices, size_t count, size_t depth, size_t max_leaf_size, size_t max_depth, Pcg32State *rng) {
     RPNode *node = malloc(sizeof(RPNode));
     if (node == NULL) {
         return NULL;
@@ -83,7 +83,7 @@ static RPNode *build_recursive(const Dataset *ds, size_t *indices, size_t count,
     }
 
     float threshold;
-    choose_split(ds, indices, count, normal, &threshold);
+    choose_split(ds, indices, count, normal, &threshold, rng);
     size_t split = partition_indices(ds, indices, count, normal, threshold);
 
     node->is_leaf = 0;
@@ -91,13 +91,13 @@ static RPNode *build_recursive(const Dataset *ds, size_t *indices, size_t count,
     node->threshold = threshold;
     node->indices = NULL;
     node->count = 0;
-    node->left = build_recursive(ds, indices, split, depth + 1, max_leaf_size, max_depth);
-    node->right = build_recursive(ds, indices + split, count - split, depth + 1, max_leaf_size, max_depth);
+    node->left = build_recursive(ds, indices, split, depth + 1, max_leaf_size, max_depth, rng);
+    node->right = build_recursive(ds, indices + split, count - split, depth + 1, max_leaf_size, max_depth, rng);
 
     return node;
 }
 
-RPTree rptree_build(const Dataset *ds, size_t max_leaf_size, size_t max_depth) {
+RPTree rptree_build(const Dataset *ds, size_t max_leaf_size, size_t max_depth, uint64_t initstate, uint64_t initseq) {
     RPTree tree;
     tree.indices = malloc(ds->n * sizeof(size_t));
     if (tree.indices == NULL) {
@@ -109,7 +109,10 @@ RPTree rptree_build(const Dataset *ds, size_t max_leaf_size, size_t max_depth) {
         tree.indices[i] = i;
     }
 
-    tree.root = build_recursive(ds, tree.indices, ds->n, 0, max_leaf_size, max_depth);
+    Pcg32State rng;
+    pcg32_seed(&rng, initstate, initseq);
+
+    tree.root = build_recursive(ds, tree.indices, ds->n, 0, max_leaf_size, max_depth, &rng);
     return tree;
 }
 
