@@ -185,17 +185,23 @@ static int append_leaf(size_t **candidates, size_t *capacity, size_t *count, con
     return 1;
 }
 
-static int expand_node(PQueue *pq, const Dataset *ds, const float *query, const RPNode *node, float incoming_priority) {
-    float dot = dot_product(query, node->normal, ds->dim);
-    float margin = dot - node->threshold;
-    float abs_margin = fabsf(margin);
+static int walk_near(PQueue *pq, const Dataset *ds, const float *query, const RPNode *node, float bound, size_t **candidates, size_t *capacity, size_t *count) {
+    while (!node->is_leaf) {
+        float dot = dot_product(query, node->normal, ds->dim);
+        float margin = dot - node->threshold;
+        float abs_margin = fabsf(margin);
 
-    RPNode *near = (margin < 0) ? node->left : node->right; 
-    RPNode *far = (margin < 0) ? node->right : node->left; 
+        RPNode *near = (margin < 0) ? node->left : node->right; 
+        RPNode *far = (margin < 0) ? node->right : node->left; 
 
-    float far_priority = (abs_margin < incoming_priority) ? abs_margin : incoming_priority;
+        float far_priority = (abs_margin < bound) ? abs_margin : bound;
+        if (!pqueue_push(pq, far, far_priority)) {
+            return 0;
+        }
 
-    return pqueue_push(pq, near, 0.0f) && pqueue_push(pq, far, far_priority);
+        node = near;
+    }
+    return append_leaf(candidates, capacity, count, node);
 }
 
 static size_t *collect_candidates(RPNode *const *roots, size_t num_roots, const Dataset *ds, const float *query, size_t search_budget, size_t *out_count) {
@@ -220,8 +226,7 @@ static size_t *collect_candidates(RPNode *const *roots, size_t num_roots, const 
         if (root == NULL) {
             continue;
         }
-        int ok = root->is_leaf ? append_leaf(&candidates, &capacity, &count, root) : expand_node(&pq, ds, query, root, FLT_MAX);
-        if (!ok) {
+        if (!walk_near(&pq, ds, query, root, FLT_MAX, &candidates, &capacity, &count)) {
             pqueue_free(&pq);
             free(candidates);
             return NULL;
@@ -230,8 +235,7 @@ static size_t *collect_candidates(RPNode *const *roots, size_t num_roots, const 
     RPNode *node;
     float priority;
     while ( count < search_budget && pqueue_pop(&pq, &node, &priority)) {
-        int ok = node->is_leaf ? append_leaf(&candidates, &capacity, &count, node) : expand_node(&pq, ds, query, node, priority);
-        if (!ok) {
+        if (!walk_near(&pq, ds,query, node, priority, &candidates, &capacity, &count)) {
             pqueue_free(&pq);
             free(candidates);
             return NULL;
