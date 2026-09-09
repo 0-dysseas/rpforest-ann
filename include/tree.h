@@ -33,6 +33,8 @@ RPTree rptree_build(const Dataset *ds, size_t max_leaf_size, size_t max_depth, u
 
 RPSearchResult rptree_search(const RPTree *tree, const Dataset *ds, const float *query, size_t k, size_t search_budget);
 
+RPSearchResult rptree_search_multi(RPNode *const *roots, size_t num_roots, const Dataset *ds, const float *query, size_t k, size_t search_budget);
+
 void rptree_free(RPTree *tree);
 
 void rptree_search_free(RPSearchResult *result);

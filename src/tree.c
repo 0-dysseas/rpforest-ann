@@ -158,12 +158,48 @@ static int compare_candidates(const void *a, const void *b) {
     return 0;
 }
 
-static size_t *collect_candidates(const RPTree *tree, const Dataset *ds, const float *query, size_t search_budget, size_t *out_count) {
-    *out_count = 0;
+static int compare_size_t(const void *a, const void *b) {
+    size_t va = *(const size_t *)a;
+    size_t vb = *(const size_t *)b;
+    if (va < vb) return -1;
+    if (va > vb) return 1;
+    return 0;
+}
 
-    if (tree->root == NULL) {
-        return NULL;
+static int append_leaf(size_t **candidates, size_t *capacity, size_t *count, const RPNode *leaf) {
+    if (*count + leaf->count > *capacity) {
+        size_t new_capacity = *capacity * 2;
+        while (new_capacity < *count + leaf->count) {
+            new_capacity *= 2;
+        }
+        size_t *grown = realloc(*candidates, new_capacity * sizeof(size_t));
+        if (grown == NULL) {
+            return 0;
+        }
+        *candidates = grown;
+        *capacity = new_capacity;
     }
+    for (size_t i = 0; i < leaf->count; i++) {
+        (*candidates)[(*count)++] = leaf->indices[i];
+    }
+    return 1;
+}
+
+static int expand_node(PQueue *pq, const Dataset *ds, const float *query, const RPNode *node, float incoming_priority) {
+    float dot = dot_product(query, node->normal, ds->dim);
+    float margin = dot - node->threshold;
+    float abs_margin = fabsf(margin);
+
+    RPNode *near = (margin < 0) ? node->left : node->right; 
+    RPNode *far = (margin < 0) ? node->right : node->left; 
+
+    float far_priority = (abs_margin < incoming_priority) ? abs_margin : incoming_priority;
+
+    return pqueue_push(pq, near, 0.0f) && pqueue_push(pq, far, far_priority);
+}
+
+static size_t *collect_candidates(RPNode *const *roots, size_t num_roots, const Dataset *ds, const float *query, size_t search_budget, size_t *out_count) {
+    *out_count = 0;
 
     size_t capacity = (search_budget > 0) ? search_budget : 1;
     size_t *candidates = malloc(capacity * sizeof(size_t));
@@ -177,52 +213,29 @@ static size_t *collect_candidates(const RPTree *tree, const Dataset *ds, const f
         return NULL;
     }
 
-    RPNode *node = tree->root;
-    float priority = FLT_MAX;
     size_t count = 0;
 
-    for (;;) {
-        while (!node->is_leaf) {
-            float dot = dot_product(query, node->normal, ds->dim);
-            float margin = dot - node->threshold;
-            float abs_margin = fabsf(margin);
-            if (abs_margin < priority) {
-                priority = abs_margin;
-            }
-
-            RPNode *near = (margin < 0.0f) ? node->left : node->right;
-            RPNode *far = (margin < 0.0f) ? node->right : node->left;
-
-            if (!pqueue_push(&pq, far, priority)) {
-                pqueue_free(&pq);
-                free(candidates);
-                return NULL;
-            }
-            node = near;
+    for (size_t r = 0; r < num_roots; r++) {
+        RPNode *root = roots[r];
+        if (root == NULL) {
+            continue;
         }
-
-        if (count + node->count > capacity) {
-            size_t new_capacity = capacity * 2;
-            while (new_capacity < count + node->count) {
-                new_capacity *= 2;
-            }
-            size_t *grown = realloc(candidates, new_capacity * sizeof(size_t));
-            if (grown == NULL) {
-                pqueue_free(&pq);
-                free(candidates);
-                return NULL;
-            }
-            candidates = grown;
-            capacity = new_capacity;
+        int ok = root->is_leaf ? append_leaf(&candidates, &capacity, &count, root) : expand_node(&pq, ds, query, root, FLT_MAX);
+        if (!ok) {
+            pqueue_free(&pq);
+            free(candidates);
+            return NULL;
         }
-        for (size_t i = 0; i < node->count; i++) {
-            candidates[count++] = node->indices[i];
+    }
+    RPNode *node;
+    float priority;
+    while ( count < search_budget && pqueue_pop(&pq, &node, &priority)) {
+        int ok = node->is_leaf ? append_leaf(&candidates, &capacity, &count, node) : expand_node(&pq, ds, query, node, priority);
+        if (!ok) {
+            pqueue_free(&pq);
+            free(candidates);
+            return NULL;
         }
-
-        if (count >= search_budget || pqueue_is_empty(&pq)) {
-            break;
-        }
-        pqueue_pop(&pq, &node, &priority);
     }
 
     pqueue_free(&pq);
@@ -230,29 +243,37 @@ static size_t *collect_candidates(const RPTree *tree, const Dataset *ds, const f
     return candidates;
 }
 
-RPSearchResult rptree_search(const RPTree *tree, const Dataset *ds, const float *query, size_t k, size_t search_budget) {
+RPSearchResult rptree_search_multi(RPNode *const *roots, size_t num_roots, const Dataset *ds, const float *query, size_t k, size_t search_budget) {
     RPSearchResult failure = {NULL, NULL, 0};
 
     size_t candidate_count = 0;
-    size_t *candidates = collect_candidates(tree, ds, query, search_budget, &candidate_count);
+    size_t *candidates = collect_candidates(roots, num_roots, ds, query, search_budget, &candidate_count);
     if (candidates == NULL) {
         return failure;
     }
+    // sortings deals with duplicate points from different trees by placing them adjacently
+    qsort(candidates, candidate_count, sizeof(size_t), compare_size_t);
+    size_t unique_count = 0;
+    for (size_t i = 0; i < candidate_count; i++) {
+        if (i == 0 || candidates[i] != candidates[i - 1]) {
+            candidates[unique_count++] = candidates[i];
+        }
+    }
 
-    Candidate *scored = malloc(candidate_count * sizeof(Candidate));
+    Candidate *scored = malloc(unique_count * sizeof(Candidate));
     if (scored == NULL) {
         free(candidates);
         return failure;
     }
-    for (size_t i = 0; i < candidate_count; i++) {
+    for (size_t i = 0; i < unique_count; i++) {
         scored[i].index = candidates[i];
         scored[i].distance = squared_distance(ds, query, candidates[i]);
     }
     free(candidates);
 
-    qsort(scored, candidate_count, sizeof(Candidate), compare_candidates);
+    qsort(scored, unique_count, sizeof(Candidate), compare_candidates);
 
-    size_t result_count = (k < candidate_count) ? k : candidate_count;
+    size_t result_count = (k < unique_count) ? k : unique_count;
 
     RPSearchResult result;
     result.indices = malloc(result_count * sizeof(size_t));
@@ -271,6 +292,14 @@ RPSearchResult rptree_search(const RPTree *tree, const Dataset *ds, const float 
 
     free(scored);
     return result;
+}
+
+RPSearchResult rptree_search(const RPTree *tree, const Dataset *ds, const float *query, size_t k, size_t search_budget) {
+    if (tree->root == NULL) {
+        RPSearchResult failure = {NULL, NULL, 0};
+        return failure;
+    }
+    return rptree_search_multi(&tree->root, 1, ds, query, k, search_budget);
 }
 
 void rptree_search_free(RPSearchResult *result) {
