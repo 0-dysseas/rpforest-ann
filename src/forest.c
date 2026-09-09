@@ -26,6 +26,27 @@ RPForest rpforest_build(const Dataset *ds, size_t num_trees, size_t max_leaf_siz
     return forest;
 }
 
+RPSearchResult rpforest_search(const RPForest *forest, const Dataset *ds, const float *query, size_t k, size_t search_budget) {
+    RPSearchResult failure = {NULL, NULL, 0};
+
+    if (forest->count == 0) {
+        return failure;
+    }
+
+    RPNode **roots = malloc(forest->count * sizeof(RPNode *));
+    if (roots == NULL) {
+        return failure;
+    }
+
+    for (size_t i =0; i < forest->count; i++) {
+        roots[i] = forest->trees[i].root;
+    }
+
+    RPSearchResult result = rptree_search_multi(roots, forest->count, ds, query, k, search_budget);
+    free(roots);
+    return result;
+}
+
 void rpforest_free(RPForest *forest) {
     if (forest->trees == NULL) {
         return;
