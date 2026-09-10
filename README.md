@@ -7,7 +7,8 @@ Random Projection Forest for Approximate Nearest Neighbor (ANN) search, implemen
 Phsae 1 complete: vector/dataset representation and synthetic dataset generation, verified through tests.
 Phase 2 complete: random projection tree, hyperplane splits, recursive build and leaf buckets. 
 Phase 3 complete: margin-based priority-queue search over a single tree.
-Phase 4 (Forest of trees + priority-queue multi-tree search) in progress. See commit history and [DESIGN.md](DESIGN.md) for details.
+Phase 4 complete: forest of independently-seeded trees, shared priority-queue search across all of them.
+Phase 5 (Brute-force baseline + recall@k measurement) in progress. See commit history and [DESIGN.md](DESIGN.md) for details.
 
 ## Motivation
 
@@ -52,8 +53,9 @@ Verified with three checks: querying with a point already in the dataset always 
 
 ### Random projection forest
 
-TBD...
+A forest is a fixed number of trees built independently over the same dTrees disagree with each other mostly where a single tree's split was a close call, a point sitting near one tree's boundary usually lands cleanly inside a leaf in most of the others.
 
+Searching the forest starrts every tree's own descent at once instead of running one tree's search after another. Each tree still follows the single-tree rule of continuing into whicheveer side the query falls on, but instead of walking straight into a leaf it pushes the side it did not take onto one priority queue shared by every tree, using the same minimum margin priority as the single tree search. Once every tree has reached a first leaf this way, the search keeps pulling the best entry out of that shared queue, whichever tree it came from, until either the search budget is spent or the queue is empty. Every tree competes for the same fixed budget instead of getting an even, tree-blind split of it.
 ## Benchmarks
 
 TBD. Brute force vs. tree and forest latency and recall@k, once implemented.
@@ -66,6 +68,8 @@ TBD. Brute force vs. tree and forest latency and recall@k, once implemented.
 - [MFCC tutorial](http://practicalcryptography.com/miscellaneous/machine-learning/guide-mel-frequency-cepstral-coefficients-mfccs/), Practical Cryptography
 - [Box-Muller transform](https://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform), Wikipedia
 - [Factor analysis](https://en.wikipedia.org/wiki/Factor_analysis), Wikipedia
+- Beis and Lowe, ["Shape Indexing Using Approximate Nearest-Neighbour Search in High-Dimensional Spaces"](https://www.cs.ubc.ca/~lowe/papers/cvpr97.pdf) (CVPR 1997)
+- Melissa O'Neill, ["PCG, A Family of Better Random Number Generators"](https://www.pcg-random.org/)
 
 ## License
 
