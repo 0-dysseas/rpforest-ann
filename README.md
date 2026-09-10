@@ -53,7 +53,7 @@ Verified with three checks: querying with a point already in the dataset always 
 
 ### Random projection forest
 
-A forest is a fixed number of trees built independently over the same dTrees disagree with each other mostly where a single tree's split was a close call, a point sitting near one tree's boundary usually lands cleanly inside a leaf in most of the others.
+A forest is a fixed number of trees built independently over the same dataset, each with its own seed. Trees disagree with each other mostly where a single tree's split was a close call, a point sitting near one tree's boundary usually lands cleanly inside a leaf in most of the others.
 
 Searching the forest starrts every tree's own descent at once instead of running one tree's search after another. Each tree still follows the single-tree rule of continuing into whicheveer side the query falls on, but instead of walking straight into a leaf it pushes the side it did not take onto one priority queue shared by every tree, using the same minimum margin priority as the single tree search. Once every tree has reached a first leaf this way, the search keeps pulling the best entry out of that shared queue, whichever tree it came from, until either the search budget is spent or the queue is empty. Every tree competes for the same fixed budget instead of getting an even, tree-blind split of it.
 ## Benchmarks
