@@ -21,3 +21,13 @@ float *dataset_at(const Dataset *ds, size_t i) {
     assert(i < ds->n);
     return ds->data + i * ds->dim;
 }
+
+float dataset_squared_distance(const Dataset *ds, const float *query, size_t i) {
+    const float *point = dataset_at(ds, i);
+    float sum = 0.0f;
+    for (size_t d = 0; d < ds->dim; d++) {
+        float diff = query[d] - point[d];
+        sum += diff *diff;;
+    }
+    return sum;
+}

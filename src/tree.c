@@ -135,16 +135,6 @@ void rptree_free(RPTree *tree) {
     tree->indices = NULL;
 }
 
-static float squared_distance(const Dataset *ds, const float *query, size_t idx) {
-    const float *point = dataset_at(ds, idx);
-    float sum = 0.0f;
-    for (size_t d = 0; d < ds->dim; d++) {
-        float diff = query[d] - point[d];
-        sum += diff * diff;
-    }
-    return sum;
-}
-
 typedef struct {
     size_t index;
     float distance;
@@ -271,7 +261,7 @@ RPSearchResult rptree_search_multi(RPNode *const *roots, size_t num_roots, const
     }
     for (size_t i = 0; i < unique_count; i++) {
         scored[i].index = candidates[i];
-        scored[i].distance = squared_distance(ds, query, candidates[i]);
+        scored[i].distance = dataset_squared_distance(ds, query, candidates[i]);
     }
     free(candidates);
 

@@ -16,4 +16,6 @@ void dataset_free(Dataset *ds);
 // returns a pointer at the start of vector i's data in the dataset
 float *dataset_at(const Dataset *ds, size_t i);
 
+float dataset_squared_distance(const Dataset *ds, const float *query, size_t i);
+
 #endif
