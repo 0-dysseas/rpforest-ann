@@ -237,3 +237,48 @@ One implementation bug found and fixed along the way, unrelated to the near/far 
 Self-match: 0 mismatches across all 2000 points, for the same reason as the single-tree case (every tree in the forest independently reaches the exact leaf its own build placed the query point in), now holding across every tree simultaneously. Sorted order: 0 out-of-order pairs. Recall@5 at `search_budget = 200`: 0.868, against the single tree's 0.624 on the identical dataset and queries. This is the actual point of building a forest: combining 8 trees' independently-random splits at the same search budget raised recall by about 24 percentage points, confirming the multi-tree search machinery (per-root `walk_near` seeding, one shared queue of `far` branches pooled across all 8 trees, `search_budget` spent competitively rather than divided evenly per tree) is doing what it was built for, not just passing the self-match/sorted-order sanity checks a broken-but-plausible implementation could also pass.
 
 Verified clean under `-fsanitize=address,undefined` as well (`make clean && make CFLAGS="-std=c11 -Wall -Wextra -Wpedantic -g -O0 -fsanitize=address,undefined" test`); identical numbers to the optimized build, as expected.
+
+## Phase 5: Brute-force baseline and recall@k strategy
+
+The tree and forest search only look at part of the dataset during a query, so they can miss some of the actual closest points. To find out how often that happens, something is needed that always gives the exactly correct answer to compare against. The only way to get an exactly correct answer for a nearest-neighbor query is to check every single point in the dataset and keep the closest ones, no shortcuts. This is called a brute-force search, and its result is what everything else gets measured against.
+
+Recall@k is the number used to compare an approximate result against that correct answer. Given a query and a value k, brute-force gives the true k nearest points, and the tree or forest gives its own k results. Recall@k is the fraction of the true k points that also show up in the approximate result. A recall@5 of 0.8 means 4 out of the true 5 nearest points were actually found.
+
+Two sources were read for this: Aumüller, Bernhardsson, and Faithfull's ANN-Benchmarks paper, which uses exactly this method across many ANN libraries (compute the true answer once with brute force, then measure recall@k of each approximate method against it), and Annoy's own `examples/precision_test.cpp`, which does the same thing in C++, an exhaustive search for the true neighbors compared against Annoy's own approximate results. See Sources below for both.
+
+Before writing anything new, the project's own test files were checked first. `tests/test_search.c` and `tests/test_forest.c` already each had their own private copy of a brute-force scan and a recall@5 calculation, written earlier only to sanity-check the tree and forest search (this is where the 0.612/0.624/0.868 numbers already in this file came from). Phase 5 is mostly about turning that duplicated, test-only code into one real, reusable part of the project, not designing something new from scratch.
+
+## Sources consulted (Phase 5)
+
+- Aumüller, Bernhardsson, and Faithfull, "ANN-Benchmarks: A Benchmarking Tool for Approximate Nearest Neighbor Algorithms": https://arxiv.org/abs/1807.05614 (project site: https://ann-benchmarks.com/)
+- spotify/annoy, `examples/precision_test.cpp`: https://github.com/spotify/annoy/blob/main/examples/precision_test.cpp
+
+## Phase 5: Implementation (shared distance helper)
+
+Three different places in the codebase, `tree.c` and the ad hoc code in both test files, each had their own private copy of the same small function: the squared distance between a query vector and one point in the dataset. Adding a fourth copy for the new brute-force code would have made this worse instead of better, so the function was pulled out into one shared place first.
+
+`dataset_squared_distance(const Dataset *ds, const float *query, size_t i)` now lives in `include/dataset.h`/`src/dataset.c`, next to `dataset_at`. This is a small, deliberate widening of what `dataset.c` is responsible for: it now owns a basic piece of vector math, not only storage and allocation. `tree.c` was updated to call this shared function instead of its own private copy, removing one of the three duplicates.
+
+A real bug was caught while reviewing the typed-in header: the declaration read `float data_squared_distance(const *ds, const float *query, size_t i);`, wrong function name (`data_squared_distance` instead of `dataset_squared_distance`) and a missing type (`const *ds` instead of `const Dataset *ds`, which C silently treats as `int`). This did not stop the project from compiling yet, since nothing called the function through the header at that point, but it produced an `-Wimplicit-int` warning on every single file that includes `dataset.h`, found by actually running `make` and reading the warning, not by inspection alone. Fixed and confirmed with a clean rebuild, zero warnings.
+
+## Phase 5: Implementation (brute-force baseline and recall@k)
+
+`include/brute_force.h`/`src/brute_force.c` are new files with two functions.
+
+`brute_force_knn(const Dataset *ds, const float *query, size_t k)` returns the true k nearest neighbors of a query by checking every point in the dataset and keeping the closest k. It has no `search_budget` parameter, unlike `rptree_search`/`rpforest_search`: brute force always looks at the whole dataset, there is no budget to spend. It returns an `RPSearchResult`, the same result type the tree and forest search already return, so it can be freed with the existing `rptree_search_free` and used anywhere a search result is expected, a third search backend with the same shape as the other two rather than a one-off.
+
+`recall_at_k(const RPSearchResult *approx, const RPSearchResult *exact, size_t k)` compares an approximate result against the true one and returns the fraction of the true k points the approximate result also found. `k` is passed in directly rather than read from `exact`'s own count, so the two values can't quietly disagree if the dataset ever holds fewer than `k` points.
+
+Both typed in exact matches against what was given.
+
+## Phase 5: Implementation (Candidate/compare_candidates duplication, settled, not yet applied)
+
+`brute_force.c` needed its own way to sort scored points by distance to build its result, and rather than invent something new it copied the existing `Candidate` struct and `compare_candidates` comparator already private to `tree.c`. That was a deliberate, acknowledged shortcut at the time (recorded in the Phase 5 chat discussion, not written up separately here), not an oversight, but it left the same duplication problem the distance helper above already solved once: the same small piece of logic sitting in two separate files.
+
+Settled fix, matching the same pattern as `dataset_squared_distance`: move `Candidate` and `compare_candidates` into `include/dataset.h`/`src/dataset.c`, non-static, and have both `tree.c` and `brute_force.c` call the shared version instead of keeping their own copies. Given to Odysseas in chat; not yet typed in or verified as of this write-up. This section will be updated once it lands and the project has been rebuilt and retested.
+
+## Phase 5: Empirical verification (brute-force baseline and recall@k)
+
+After the distance helper moved into `dataset.h`/`dataset.c` and `tree.c` was updated to use it, the full project rebuilt with zero warnings (`make clean && make`), and the existing test suite (`make test`) reproduced the exact same numbers as before the change: tree structure unchanged (167 leaves), self-match 0 mismatches, sorted order 0 out-of-order pairs, recall@5 0.624 for a single tree and 0.868 for the 8-tree forest. This confirmed the move was purely mechanical and changed nothing about behavior.
+
+Once `brute_force.h`/`brute_force.c` were typed in, `tests/test_search.c` and `tests/test_forest.c` were rewritten directly (not typed in by Odysseas, see WORKFLOW.md's collaboration model for scaffolding files) to drop their own duplicated brute-force/recall code and call `brute_force_knn`/`recall_at_k` from the new module instead. Rebuilt and rerun both plain and under `-fsanitize=address,undefined`: both clean, and both produced numbers identical to before this refactor (self-match 0/0, sorted order 0/0, recall@5 0.624 single tree / 0.868 forest). This is the first time `brute_force_knn`/`recall_at_k` actually ran, since nothing had called them before this point, so the clean sanitizer result is real evidence they are memory-safe under actual use, not only that the code compiles.

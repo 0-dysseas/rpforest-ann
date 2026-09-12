@@ -18,4 +18,6 @@ float *dataset_at(const Dataset *ds, size_t i);
 
 float dataset_squared_distance(const Dataset *ds, const float *query, size_t i);
 
+
+
 #endif

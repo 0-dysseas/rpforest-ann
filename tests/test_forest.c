@@ -1,57 +1,9 @@
 #include "dataset.h"
 #include "generator.h"
 #include "forest.h"
+#include "brute_force.h"
 
 #include <stdio.h>
-#include <stdlib.h>
-
-static float squared_distance(const Dataset *ds, const float *query, size_t idx) {
-    const float *point = dataset_at(ds, idx);
-    float sum = 0.0f;
-    for (size_t d = 0; d < ds->dim; d++) {
-        float diff = query[d] - point[d];
-        sum += diff * diff;
-    }
-    return sum;
-}
-
-typedef struct {
-    size_t index;
-    float distance;
-} Candidate;
-
-static int compare_candidates(const void *a, const void *b) {
-    float da = ((const Candidate *)a)->distance;
-    float db = ((const Candidate *)b)->distance;
-    if (da < db) return -1;
-    if (da > db) return 1;
-    return 0;
-}
-
-// Brute-force exact k nearest neighbors of query within ds, for comparison
-// against the forest's approximate result. Test-only, not part of the
-// project's own search path.
-static void brute_force_knn(const Dataset *ds, const float *query, size_t k, size_t *out_indices) {
-    Candidate *scored = malloc(ds->n * sizeof(Candidate));
-    for (size_t i = 0; i < ds->n; i++) {
-        scored[i].index = i;
-        scored[i].distance = squared_distance(ds, query, i);
-    }
-    qsort(scored, ds->n, sizeof(Candidate), compare_candidates);
-    for (size_t i = 0; i < k; i++) {
-        out_indices[i] = scored[i].index;
-    }
-    free(scored);
-}
-
-static int contains(const size_t *arr, size_t count, size_t value) {
-    for (size_t i = 0; i < count; i++) {
-        if (arr[i] == value) {
-            return 1;
-        }
-    }
-    return 0;
-}
 
 int main(void) {
     size_t n = 2000;
@@ -122,30 +74,23 @@ int main(void) {
         return 1;
     }
 
-    size_t *true_knn = malloc(k * sizeof(size_t));
     double total_recall = 0.0;
 
     for (size_t q = 0; q < num_queries; q++) {
         const float *query = dataset_at(&queries, q);
-        brute_force_knn(&ds, query, k, true_knn);
+        RPSearchResult exact = brute_force_knn(&ds, query, k);
 
         RPSearchResult result = rpforest_search(&forest, &ds, query, k, search_budget);
 
-        size_t hits = 0;
-        for (size_t i = 0; i < result.count; i++) {
-            if (contains(true_knn, k, result.indices[i])) {
-                hits++;
-            }
-        }
-        total_recall += (double)hits / (double)k;
+        total_recall += recall_at_k(&result, &exact, k);
 
         rptree_search_free(&result);
+        rptree_search_free(&exact);
     }
 
     printf("forest recall@%zu over %zu fresh queries (%zu trees, search_budget = %zu): %.3f average\n",
            k, num_queries, num_trees, search_budget, total_recall / (double)num_queries);
 
-    free(true_knn);
     dataset_free(&queries);
     rpforest_free(&forest);
     dataset_free(&ds);
