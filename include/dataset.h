@@ -18,6 +18,11 @@ float *dataset_at(const Dataset *ds, size_t i);
 
 float dataset_squared_distance(const Dataset *ds, const float *query, size_t i);
 
+typedef struct {
+    size_t index;
+    float distance;
+} Candidate;
 
+int compare_candidates(const void *a, const void *b);
 
 #endif

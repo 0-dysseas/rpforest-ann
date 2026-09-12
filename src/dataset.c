@@ -31,3 +31,11 @@ float dataset_squared_distance(const Dataset *ds, const float *query, size_t i) 
     }
     return sum;
 }
+
+int compare_candidates(const void *a, const void *b) {
+    float da = ((const Candidate*)a)->distance;
+    float db = ((const Candidate*)b)->distance;
+    if (da < db) return -1;
+    if (da > db) return 1;
+    return 0;
+}

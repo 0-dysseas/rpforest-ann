@@ -135,19 +135,6 @@ void rptree_free(RPTree *tree) {
     tree->indices = NULL;
 }
 
-typedef struct {
-    size_t index;
-    float distance;
-} Candidate;
-
-static int compare_candidates(const void *a, const void *b) {
-    float da = ((const Candidate *)a)->distance;
-    float db = ((const Candidate *)b)->distance;
-    if (da < db) return -1;
-    if (da > db) return 1;
-    return 0;
-}
-
 static int compare_size_t(const void *a, const void *b) {
     size_t va = *(const size_t *)a;
     size_t vb = *(const size_t *)b;

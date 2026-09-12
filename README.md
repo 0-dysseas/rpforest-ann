@@ -8,7 +8,8 @@ Phsae 1 complete: vector/dataset representation and synthetic dataset generation
 Phase 2 complete: random projection tree, hyperplane splits, recursive build and leaf buckets. 
 Phase 3 complete: margin-based priority-queue search over a single tree.
 Phase 4 complete: forest of independently-seeded trees, shared priority-queue search across all of them.
-Phase 5 (Brute-force baseline + recall@k measurement) in progress. See commit history and [DESIGN.md](DESIGN.md) for details.
+Phase 5 complete: Brute-force baseline + recall@k measurement.
+Phase 6 in progress. See commit history and [DESIGN.md](DESIGN.md) for details.
 
 ## Motivation
 
@@ -56,9 +57,12 @@ Verified with three checks: querying with a point already in the dataset always 
 A forest is a fixed number of trees built independently over the same dataset, each with its own seed. Trees disagree with each other mostly where a single tree's split was a close call, a point sitting near one tree's boundary usually lands cleanly inside a leaf in most of the others.
 
 Searching the forest starrts every tree's own descent at once instead of running one tree's search after another. Each tree still follows the single-tree rule of continuing into whicheveer side the query falls on, but instead of walking straight into a leaf it pushes the side it did not take onto one priority queue shared by every tree, using the same minimum margin priority as the single tree search. Once every tree has reached a first leaf this way, the search keeps pulling the best entry out of that shared queue, whichever tree it came from, until either the search budget is spent or the queue is empty. Every tree competes for the same fixed budget instead of getting an even, tree-blind split of it.
-## Benchmarks
 
-TBD. Brute force vs. tree and forest latency and recall@k, once implemented.
+### Brute force baseline and recall@k
+
+The tree and forest search only look at a part of the dataset, so their results can miss some of the actual nearest points. To measure how often that happens, a brute force search was implemented as reference: it checks every point in the dataset and returns the true closest k. This implementation is much slower with a O(nlogn) time complexity but it produces the most accurate result.
+
+Recall@k compares an approximate result, from the tree or the forest, against this ground truth. It is a fraction of the true k nearest points that the approximate search actually found. A recall@5 of 0.8 means 4 out of the true 5 nearest points were returned.
 
 ## Sources
 

@@ -1,19 +1,6 @@
 #include "brute_force.h"
 #include <stdlib.h>
 
-typedef struct {
-    size_t index;
-    float distance;
-} Candidate;
-
-static int compare_candidates(const void *a, const void *b) {
-    float da = ((const Candidate *)a)->distance;
-    float db = ((const Candidate *)b)->distance;
-    if (da < db) return -1;
-    if (da > db) return 1;
-    return 0;
-}
-
 RPSearchResult brute_force_knn(const Dataset *ds, const float *query, size_t k) {
     RPSearchResult failure = {NULL, NULL, 0};
 
