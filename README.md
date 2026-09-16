@@ -4,12 +4,12 @@ Random Projection Forest for Approximate Nearest Neighbor (ANN) search, implemen
 
 ## Status
 
-Phsae 1 complete: vector/dataset representation and synthetic dataset generation, verified through tests.
+Phase 1 complete: vector/dataset representation and synthetic dataset generation, verified through tests.
 Phase 2 complete: random projection tree, hyperplane splits, recursive build and leaf buckets. 
 Phase 3 complete: margin-based priority-queue search over a single tree.
 Phase 4 complete: forest of independently-seeded trees, shared priority-queue search across all of them.
 Phase 5 complete: Brute-force baseline + recall@k measurement.
-Phase 6 in progress. See commit history and [DESIGN.md](DESIGN.md) for details.
+Phase 6 complete: benchmark harness (latency vs. N and dimensionality, recall@5 vs. search_budget and num_trees) + results.
 
 ## Motivation
 
@@ -64,6 +64,28 @@ The tree and forest search only look at a part of the dataset, so their results 
 
 Recall@k compares an approximate result, from the tree or the forest, against this ground truth. It is a fraction of the true k nearest points that the approximate search actually found. A recall@5 of 0.8 means 4 out of the true 5 nearest points were returned.
 
+### Benchmark harness
+
+Every earlier phase's numbers came from one dataset of a fixed size. A benchmark (`scripts/benchmark.c`, run with `make bench`) measures how latency and recall actually change as the problem grows.
+
+For a range of dataset sizes N and vector dimensionalities D, brute force, a single tree, and the forest are each timed against the same 250 held-out query vectors, generated from the same distribution as the dataset but never inserted into it. Seperately, recall@5 is measured across a range of search_budget values for the single tree, and a range of num_trees for the forest. Timing uses `clock_gettime(CLOCK_MONOTONIC, ...)`, with an untimed warm-up before each timed run so CPU frequency scaling and cold caches don't bias the first measurements.
+
+## Results
+
+![Query latency vs. dataset size](data/latency_vs_n.png)
+
+Brute force's query latency grows in proportion to N, from 0.17 ms at N=1,000 to 21.5 ms at N=100,000. Single tree and forest search both stay in the 0.05-0.08 ms range across the same span, barely moving. This is the seperation the tree/forest design produces.
+
+![Query latency vs. dimensionality](data/latency_vs_dim.png)
+
+Dimensionality has a much smaller effect: all three methods get somewhat slower as D grows from 8 to 256, brute force considerably more, but unlike the gap seen across N.
+
+![Recall@5 vs. search budget](data/recall_vs_search_budget.png)
+
+![Recall@5 vs. number of trees](data/recall_vs_num_trees.png)
+
+Recall@5 rises with both search_budget (single tree) and num_trees (forest), with diminishing returns past a point in both cases. These curves were measured on a larger, higher dimensional dataset (N=20,000, dim=32) than the recall@5 figures quoted above (N=2,000, dim=20), so the two aren't directly comparable, a harder search problem naturally recalls less at the same budget or tree count.
+
 ## Sources
 
 - Erik Bernhardsson, "Nearest neighbor methods and vector models", [part 1](https://erikbern.com/2015/09/24/nearest-neighbor-methods-vector-models-part-1.html) and [part 2](https://erikbern.com/2015/10/01/nearest-neighbors-and-vector-models-part-2-how-to-search-in-high-dimensional-spaces.html)
@@ -74,6 +96,9 @@ Recall@k compares an approximate result, from the tree or the forest, against th
 - [Factor analysis](https://en.wikipedia.org/wiki/Factor_analysis), Wikipedia
 - Beis and Lowe, ["Shape Indexing Using Approximate Nearest-Neighbour Search in High-Dimensional Spaces"](https://www.cs.ubc.ca/~lowe/papers/cvpr97.pdf) (CVPR 1997)
 - Melissa O'Neill, ["PCG, A Family of Better Random Number Generators"](https://www.pcg-random.org/)
+- Aumüller, Bernhardsson, and Faithfull, ["ANN-Benchmarks: A Benchmarking Tool for Approximate Nearest Neighbor Algorithms"](https://arxiv.org/abs/1807.05614)
+- Gil Tene, ["How NOT to Measure Latency"](https://www.youtube.com/watch?v=lJ8ydIuPFeU)
+- Chandler Carruth, ["Tuning C++: Benchmarks, and CPUs, and Compilers! Oh My!"](https://www.youtube.com/watch?v=nXaxk27zwlk) (CppCon 2015)
 
 ## License
 

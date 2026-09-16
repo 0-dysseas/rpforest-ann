@@ -282,3 +282,64 @@ Settled fix, matching the same pattern as `dataset_squared_distance`: move `Cand
 After the distance helper moved into `dataset.h`/`dataset.c` and `tree.c` was updated to use it, the full project rebuilt with zero warnings (`make clean && make`), and the existing test suite (`make test`) reproduced the exact same numbers as before the change: tree structure unchanged (167 leaves), self-match 0 mismatches, sorted order 0 out-of-order pairs, recall@5 0.624 for a single tree and 0.868 for the 8-tree forest. This confirmed the move was purely mechanical and changed nothing about behavior.
 
 Once `brute_force.h`/`brute_force.c` were typed in, `tests/test_search.c` and `tests/test_forest.c` were rewritten directly (not typed in by Odysseas, see WORKFLOW.md's collaboration model for scaffolding files) to drop their own duplicated brute-force/recall code and call `brute_force_knn`/`recall_at_k` from the new module instead. Rebuilt and rerun both plain and under `-fsanitize=address,undefined`: both clean, and both produced numbers identical to before this refactor (self-match 0/0, sorted order 0/0, recall@5 0.624 single tree / 0.868 forest). This is the first time `brute_force_knn`/`recall_at_k` actually ran, since nothing had called them before this point, so the clean sanitizer result is real evidence they are memory-safe under actual use, not only that the code compiles.
+
+## Phase 6: Benchmark harness strategy
+
+Every phase up to this point verified the tree and forest with a handful of numbers from one small dataset (2000 points, 20 dimensions): recall@5, a self-match check, a sorted-order check. That is enough to know the code is correct, but not enough to know how it behaves as the problem gets bigger, which is the actual point of building a tree/forest instead of just using brute force. Phase 6 answers that with two kinds of curve rather than single numbers: latency as dataset size N and vector dimensionality D grow, for all three search methods (brute force, single tree, forest), and recall@k as the knobs that trade accuracy for cost (search_budget for the tree, num_trees for the forest) vary.
+
+Design points settled in chat before anything was written, each grounded in one of the sources below:
+
+One measurement is many different held-out query vectors, not the same query timed repeatedly. Two separate things can make a single timed query slow: the query itself being genuinely harder (a larger leaf bucket, more candidates popped off the priority queue), or the CPU simply running slower that instant for reasons unrelated to the algorithm (frequency scaling, thermal state). Timing the same query repeatedly only characterizes the second thing. Timing many different queries captures the first (real, representative behavior across the dataset) while the second washes out across the sample. Query vectors are held out: generated from the same generator/distribution as the dataset (same `factors`, different `initseq`) but never inserted into the tree or forest, so the benchmark measures a realistic "search for something new" query rather than the easier case of a point the structure already has a leaf for (the existing self-match tests already established that indexed points are found trivially, which is exactly the case a benchmark should not be measuring).
+
+The same fixed query set is reused across all three methods for a given (N, D) pair, so the three-way comparison is apples to apples rather than each method getting a different, possibly easier or harder, random sample.
+
+A short untimed warm-up (10 queries against all three methods) runs before the timed loop at every configuration, so the first timed queries aren't penalized by cold caches or a CPU that hasn't reached its running frequency yet.
+
+Timing uses `clock_gettime(CLOCK_MONOTONIC, ...)`, not wall-clock time, since it can't jump backward or forward from a system clock adjustment mid-measurement, only elapsed time matters here.
+
+No explicit trick (Google Benchmark's `DoNotOptimize`/`ClobberMemory`, or a hand-rolled equivalent) is needed to stop the compiler from deleting the timed work. `brute_force_knn`, `rptree_search`, and `rpforest_search` are defined in separately compiled translation units, and the project's Makefile builds without link-time optimization, so the compiler has no visibility into those functions' bodies when compiling `benchmark.c` and cannot prove their results are unused. Each result is also written straight into the CSV output immediately after it's timed, which would force the issue even if that weren't true.
+
+Raw per-query results are written to `data/benchmark_results.csv` by the driver; a separate script reads that file and produces plots. Keeping measurement and plotting as two steps means re-plotting, or plotting differently, never requires re-running the benchmark.
+
+## Sources consulted (Phase 6)
+
+- Gil Tene, "How NOT to Measure Latency" (Strange Loop): https://www.youtube.com/watch?v=lJ8ydIuPFeU
+- Chandler Carruth, "Tuning C++: Benchmarks, and CPUs, and Compilers! Oh My!" (CppCon 2015): https://www.youtube.com/watch?v=nXaxk27zwlk
+- Aumüller, Bernhardsson, and Faithfull, "ANN-Benchmarks: A Benchmarking Tool for Approximate Nearest Neighbor Algorithms": https://arxiv.org/abs/1807.05614 (already cited in Phase 5 for recall@k methodology; read again here for how it structures a benchmark harness across a grid of parameters rather than single settings)
+
+## Phase 6: Implementation (benchmark driver)
+
+`scripts/benchmark.c` is new. It is scaffolding, written directly rather than typed in by Odysseas (see WORKFLOW.md's collaboration model), and is built by a new `bench` target added to the Makefile, mirroring the existing test targets: `$(BENCH_BIN): $(BENCH_SRC) $(LIB_OBJS) | $(BUILD_DIR)`.
+
+One function, `run_config(sweep, n, dim, num_trees, search_budget)`, generates a fresh corpus and a fresh held-out query set at the given size, builds a tree and a forest over the corpus, warms up, then times `NUM_QUERIES` (250) queries against all three methods and appends one CSV row per (method, query) pair. `main` calls it across four sweeps:
+
+- `latency_vs_n`: N in {1000, 2000, 5000, 10000, 20000, 50000, 100000}, dimensionality fixed at 32.
+- `latency_vs_dim`: dimensionality in {8, 16, 32, 64, 128, 256}, N fixed at 20000.
+- `recall_vs_budget`: single tree's search_budget in {20, 50, 100, 200, 500, 1000}, N and dim fixed at 20000/32, num_trees fixed at 8.
+- `recall_vs_num_trees`: forest's num_trees in {1, 2, 4, 8, 16, 32}, N, dim, and search_budget fixed at 20000/32/200.
+
+25 configurations in total, 250 queries times 3 methods each, 18750 CSV rows. Seeding follows the convention already established in `tests/test_search.c`/`tests/test_forest.c`: corpus generated with initstate 42, initseq 1; tree build with initstate 42, initseq 2; queries generated with initstate 42, initseq 3. `k` is fixed at 5 throughout, matching every recall@5 figure recorded in earlier phases.
+
+The CSV schema is `sweep,method,n,dim,num_trees,search_budget,query_index,latency_ns,recall_at_5`. `num_trees` is blank for brute force and single tree rows, `search_budget` is blank only for brute force rows (brute force has no budget to spend). Brute force's own result doubles as each query's exact ground truth for the other two methods' recall figures, so it is only computed once per query, not duplicated.
+
+## Phase 6: Implementation (plotting script)
+
+`scripts/plot_results.py` is new, also scaffolding. It reads `data/benchmark_results.csv` with pandas and writes four PNGs into `data/`: `latency_vs_n.png`, `latency_vs_dim.png`, `recall_vs_search_budget.png`, `recall_vs_num_trees.png`.
+
+The two latency plots show the median and the 95th percentile as separate lines (solid and dashed) rather than a single mean, directly per the Tene source above: an average would hide how the slow tail behaves. Both axes are log-scaled, since brute force and tree/forest search differ by more than an order of magnitude at larger N. The two recall plots show the mean recall@5 at each setting, one series each (single tree for the budget sweep, forest for the num_trees sweep).
+
+Each method keeps one fixed color across every plot it appears in (brute force blue, single tree orange, forest aqua), so a method's identity never changes between figures.
+
+## Phase 6: Empirical verification (benchmark run)
+
+Built clean under the project's standard flags (`-std=c11 -Wall -Wextra -Wpedantic -O2`), zero warnings. `make bench` ran all 25 configurations in a few seconds and produced 18750 result rows; `scripts/plot_results.py` produced all four plots without error.
+
+Latency vs. N (dimensionality fixed at 32), median query latency: brute force grows from 0.17 ms at N=1000 to 21.5 ms at N=100000, roughly in proportion to N. Single tree and forest both stay in the 0.05-0.08 ms range across the same span, barely moving. This is the separation the tree/forest design exists to produce, and it shows up directly in measurement rather than only following from the O(N) vs. sub-linear argument on paper.
+
+Latency vs. dimensionality (N fixed at 20000): a much gentler effect than N. All three methods get somewhat slower as D grows from 8 to 256, brute force more so than tree/forest, but nothing like the order-of-magnitude separation seen across N.
+
+Recall@5 vs. search_budget (single tree, N=20000, dim=32, k=5): 0.143 at budget 20, rising to 0.466 at budget 1000, diminishing returns past roughly budget 200.
+
+Recall@5 vs. num_trees (forest, same N/dim/k, search_budget fixed at 200): 0.283 at 1 tree, rising to 0.867 at 32 trees, also diminishing returns past roughly 16 trees.
+
+These recall figures are lower than the 0.624 (single tree) and 0.868 (forest) recorded in Phase 4/5, at the same search_budget (200) and, for the forest row, the same num_trees (8). That is expected, not a regression: this benchmark's baseline dataset is N=20000, dim=32, against Phase 4/5's N=2000, dim=20, ten times more points to be confused with and a higher dimensionality, both of which make the search problem genuinely harder. The forest's recall@5 at num_trees=8 in this benchmark (0.572) sits consistently between its 1-tree figure (0.283) and its 32-tree figure (0.867), and the single tree's 0.294 at budget=200 here is consistent with its own budget curve, so the drop against the older numbers is explained by the harder baseline rather than by anything wrong in the harness or the search code itself.
