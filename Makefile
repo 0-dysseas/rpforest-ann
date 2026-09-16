@@ -25,7 +25,10 @@ TEST_SEARCH_BIN := $(BUILD_DIR)/test_search
 TEST_FOREST_SRC := tests/test_forest.c
 TEST_FOREST_BIN := $(BUILD_DIR)/test_forest
 
-.PHONY: all debug clean run test
+BENCH_SRC := scripts/benchmark.c
+BENCH_BIN := $(BUILD_DIR)/benchmark
+
+.PHONY: all debug clean run test bench
 
 all: $(BIN)
 
@@ -53,6 +56,9 @@ test: $(TEST_GENERATOR_BIN) $(TEST_TREE_BIN) $(TEST_SEARCH_BIN) $(TEST_FOREST_BI
 	./$(TEST_SEARCH_BIN)
 	./$(TEST_FOREST_BIN)
 
+bench: $(BENCH_BIN)
+	./$(BENCH_BIN)
+
 $(TEST_GENERATOR_BIN): $(TEST_GENERATOR_SRC) $(LIB_OBJS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -I$(INC_DIR) $(TEST_GENERATOR_SRC) $(LIB_OBJS) -o $@ $(LDFLAGS)
 
@@ -64,3 +70,6 @@ $(TEST_SEARCH_BIN): $(TEST_SEARCH_SRC) $(LIB_OBJS) | $(BUILD_DIR)
 
 $(TEST_FOREST_BIN): $(TEST_FOREST_SRC) $(LIB_OBJS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -I$(INC_DIR) $(TEST_FOREST_SRC) $(LIB_OBJS) -o $@ $(LDFLAGS)
+
+$(BENCH_BIN): $(BENCH_SRC) $(LIB_OBJS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -I$(INC_DIR) $(BENCH_SRC) $(LIB_OBJS) -o $@ $(LDFLAGS)
